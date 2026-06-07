@@ -106,15 +106,8 @@ Keep the total summary under 300 words.
 
 
 def send_telegram(message):
-    """Send message to Telegram bot."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
-    resp = requests.post(url, json=payload)
-    return resp.ok
+    from telegram_topics import send_emails
+    return send_emails(message)
 
 
 def run():

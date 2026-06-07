@@ -1,7 +1,18 @@
+# Credentials & secrets
+.env
 credentials.json
 token.json
+linkedin_session.json
+
+# Runtime state
 *.log
 bot.pid
+seen_emails.json
+
+# Databases (personal data)
+*.db
+
+# Python
 __pycache__/
 *.pyc
-.env
+*.pyo
