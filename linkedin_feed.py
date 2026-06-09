@@ -136,8 +136,20 @@ def send_post_for_approval(post):
 
 # ── Claude ────────────────────────────────────────────────────────────────────
 
+HIRING_KEYWORDS = [
+    "we are hiring", "we're hiring", "immediate joiner", "looking for candidates",
+    "job opening", "open position", "apply now", "send your resume", "send resume",
+    "dm me your resume", "tag someone", "referral", "urgent requirement",
+    "looking for a ", "hiring for", "positions available", "vacancies"
+]
+
+
 def score_post_with_claude(post):
-    """Score a post 1-10 for quality and relevance to Akshay's interests."""
+    """Score a post 1-10. Job/hiring posts auto-score 0."""
+    text_lower = post["post_text"].lower()
+    if any(kw in text_lower for kw in HIRING_KEYWORDS):
+        return 0  # Skip instantly without calling Claude
+
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
     try:
         response = client.messages.create(
@@ -146,14 +158,16 @@ def score_post_with_claude(post):
             messages=[{
                 "role": "user",
                 "content": f"""Score this LinkedIn post 1-10 for a software engineer interested in:
-.NET Core, AWS, DevOps, Kubernetes, Kafka, cloud-native, ML/AI, career growth, fintech.
+.NET Core, AWS, DevOps, Kubernetes, Kafka, cloud-native architecture, ML/AI, fintech, career growth.
 
 Post by {post['author_name']}:
 {post['post_text'][:500]}
 
 Reply with ONLY a number 1-10.
-High score = insightful, technical, career-relevant, thought-provoking.
-Low score = promotional, generic, off-topic."""
+Score 8-10 = deep technical insight, lessons learned, architecture decisions, real experience.
+Score 5-7 = useful but generic, surface-level tips, moderately relevant.
+Score 1-4 = promotional content, job postings, recruiters advertising roles, irrelevant topics.
+IMPORTANT: Score 1 if this is a job posting, hiring announcement, or recruiter message."""
             }]
         )
         return int(response.content[0].text.strip().split()[0])
@@ -334,51 +348,83 @@ async def scrape_feed_posts(page):
     return posts
 
 
-async def comment_on_post(page, post, comment_text):
-    """Navigate to post and submit a comment."""
+async def resolve_post_url(page, post):
+    """
+    If post has no URL, navigate to the author's activity page
+    and find their most recent post permalink.
+    """
+    if post.get("post_url"):
+        return post["post_url"]
+    if not post.get("author_url") or "/in/" not in post["author_url"]:
+        return None
     try:
-        await page.goto(post["post_url"], wait_until="domcontentloaded")
-        await page.wait_for_timeout(3000)
+        activity_url = post["author_url"].rstrip("/") + "/recent-activity/all/"
+        await page.goto(activity_url, wait_until="domcontentloaded")
+        await page.wait_for_timeout(4000)
+        for lnk in await page.query_selector_all("a"):
+            href = await lnk.get_attribute("href") or ""
+            if "/feed/update/urn" in href:
+                return "https://www.linkedin.com" + href.split("?")[0] if href.startswith("/") else href.split("?")[0]
+    except Exception:
+        pass
+    return None
 
-        # Click Comment button
-        comment_btn = (
-            await page.query_selector("button[aria-label*='Comment']") or
-            await page.query_selector(".comment-button")
-        )
+
+async def comment_on_post(page, post, comment_text):
+    """Navigate to post permalink and submit a comment."""
+    try:
+        post_url = await resolve_post_url(page, post)
+        if not post_url:
+            print(f"  No URL found for post by {post['author_name']}")
+            return False
+
+        await page.goto(post_url, wait_until="domcontentloaded")
+        await page.wait_for_timeout(4000)
+
+        # Click enabled Comment button
+        comment_btn = None
+        for btn in await page.get_by_role("button", name="Comment").all():
+            if await btn.is_enabled():
+                comment_btn = btn
+                break
         if not comment_btn:
-            print(f"  No comment button for post {post['id']}")
+            print(f"  No enabled Comment button for post by {post['author_name']}")
             return False
 
         await comment_btn.click()
         await page.wait_for_timeout(2000)
 
-        # LinkedIn uses Quill editor for comments
-        editor = (
-            await page.query_selector(".comments-comment-box__text-editor .ql-editor") or
-            await page.query_selector(".ql-editor")
-        )
-        if not editor:
-            print(f"  No comment editor found for post {post['id']}")
+        # LinkedIn comment box is a contenteditable div
+        editor = page.locator('[contenteditable="true"]').first
+        if not await editor.is_visible():
+            print(f"  Comment editor not visible for post by {post['author_name']}")
             return False
 
         await editor.click()
         await page.wait_for_timeout(500)
-        await editor.type(comment_text, delay=30)
+
+        # Type each character and dispatch input events so React enables Submit
+        await editor.fill("")
+        for char in comment_text:
+            await page.keyboard.type(char, delay=25)
         await page.wait_for_timeout(1000)
 
-        # Submit comment
-        submit_btn = (
-            await page.query_selector("button.comments-comment-box__submit-button")        or
-            await page.query_selector("button[aria-label*='post your comment']")            or
-            await page.query_selector("button[class*='submit'][class*='comment']")
-        )
-        if not submit_btn:
-            print(f"  No submit button found for post {post['id']}")
-            return False
+        # Submit — LinkedIn uses a "Submit" button (enabled after typing)
+        submit_btn = page.get_by_role("button", name="Submit")
+        try:
+            await submit_btn.wait_for(state="visible", timeout=5000)
+            if await submit_btn.is_enabled():
+                await submit_btn.click()
+                await page.wait_for_timeout(2000)
+                print(f"  ✅ Commented on post by {post['author_name']}")
+                return True
+        except Exception:
+            pass
 
-        await submit_btn.click()
+        # Fallback: Ctrl+Enter to submit
+        await page.keyboard.press("Control+Return")
         await page.wait_for_timeout(2000)
-        print(f"  ✅ Commented on post by {post['author_name']}")
+        print(f"  ✅ Commented (via keyboard) on post by {post['author_name']}")
         return True
 
     except Exception as e:
