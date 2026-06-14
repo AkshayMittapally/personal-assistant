@@ -19,6 +19,11 @@ from linkedin_post import post_from_topic
 from job_tracker import format_status_report, handle_update_command
 import subprocess
 
+# Runtime paths — resolved dynamically so the repo works on any machine
+BASE       = Path(__file__).parent
+PYTHON     = sys.executable
+STOCKS_DIR = Path.home() / "Akshay" / "stockspredictor"
+
 # Prevent duplicate instances
 PIDFILE = Path("/tmp/akshay_bot.pid")
 if PIDFILE.exists():
@@ -321,8 +326,7 @@ def execute_tool(name, params):
 
         elif name == "check_stocks":
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-                 "/Users/akshayreddy/Akshay/stockspredictor/stock_alerts.py"],
+                [PYTHON, str(STOCKS_DIR / "stock_alerts.py")],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return "📊 Stock check triggered — results coming to Stocks topic shortly."
@@ -330,7 +334,7 @@ def execute_tool(name, params):
         elif name == "add_stock":
             import sqlite3
             ticker = params["ticker"].upper().strip()
-            db = "/Users/akshayreddy/Akshay/stockspredictor/stocks_vanguard.db"
+            db = str(STOCKS_DIR / "stocks_vanguard.db")
             conn = sqlite3.connect(db)
             existing = conn.execute("SELECT ticker FROM favorites WHERE ticker=?", (ticker,)).fetchone()
             if existing:
@@ -344,7 +348,7 @@ def execute_tool(name, params):
         elif name == "remove_stock":
             import sqlite3
             ticker = params["ticker"].upper().strip()
-            db = "/Users/akshayreddy/Akshay/stockspredictor/stocks_vanguard.db"
+            db = str(STOCKS_DIR / "stocks_vanguard.db")
             conn = sqlite3.connect(db)
             deleted = conn.execute("DELETE FROM favorites WHERE ticker=?", (ticker,)).rowcount
             conn.commit()
@@ -355,7 +359,7 @@ def execute_tool(name, params):
 
         elif name == "list_stocks":
             import sqlite3
-            db = "/Users/akshayreddy/Akshay/stockspredictor/stocks_vanguard.db"
+            db = str(STOCKS_DIR / "stocks_vanguard.db")
             conn = sqlite3.connect(db)
             tickers = [r[0] for r in conn.execute("SELECT ticker FROM favorites ORDER BY ticker").fetchall()]
             conn.close()
@@ -365,8 +369,7 @@ def execute_tool(name, params):
 
         elif name == "search_jobs":
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-                 "/Users/akshayreddy/email_assistant/linkedin_apply.py", "find"],
+                [PYTHON, str(BASE / "linkedin_apply.py"), "find"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return "🔍 Job search triggered — results coming to Jobs topic shortly."
@@ -440,8 +443,7 @@ def handle_command(text):
     if cmd == "/stocks":
         try:
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-                 "/Users/akshayreddy/Akshay/stockspredictor/stock_alerts.py"],
+                [PYTHON, str(STOCKS_DIR / "stock_alerts.py")],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return "📊 Checking your stocks... results coming shortly!"
@@ -482,8 +484,7 @@ def handle_command(text):
     if cmd == "/findjobs":
         try:
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-                 "/Users/akshayreddy/email_assistant/linkedin_apply.py", "find"],
+                [PYTHON, str(BASE / "linkedin_apply.py"), "find"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return "🔍 Searching LinkedIn for Easy Apply jobs matching your profile...\nResults will appear below — tap ✅ Apply or ❌ Skip on each one."
@@ -493,8 +494,7 @@ def handle_command(text):
     if cmd == "/feed":
         try:
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-                 "/Users/akshayreddy/email_assistant/linkedin_feed.py"],
+                [PYTHON, str(BASE / "linkedin_feed.py")],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return "📰 Scanning your LinkedIn feed for quality posts... results coming shortly!"
@@ -504,8 +504,7 @@ def handle_command(text):
     if cmd == "/applyjobs":
         try:
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-                 "/Users/akshayreddy/email_assistant/linkedin_apply.py", "apply"],
+                [PYTHON, str(BASE / "linkedin_apply.py"), "apply"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return "🚀 Applying to all jobs you approved... will update you when done!"
@@ -514,10 +513,9 @@ def handle_command(text):
 
     if cmd == "/autoapply":
         try:
-            log_file = open("/Users/akshayreddy/email_assistant/bot.log", "a")
+            log_file = open(BASE / "bot.log", "a")
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3", "-u",
-                 "/Users/akshayreddy/email_assistant/linkedin_apply.py", "autoapply"],
+                [PYTHON, "-u", str(BASE / "linkedin_apply.py"), "autoapply"],
                 stdout=log_file, stderr=log_file
             )
             return "🤖 Auto-applying to all new Easy Apply jobs — no approval needed! Updates coming shortly."
@@ -527,8 +525,7 @@ def handle_command(text):
     if cmd == "/digest":
         try:
             subprocess.Popen(
-                ["/Library/Frameworks/Python.framework/Versions/3.11/bin/python3",
-                 "/Users/akshayreddy/email_assistant/tech_digest.py"],
+                [PYTHON, str(BASE / "tech_digest.py")],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
             )
             return "📰 Fetching today's tech digest... posting to Daily shortly!"
